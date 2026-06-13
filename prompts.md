@@ -906,3 +906,34 @@ Low Priority Issues
 Provide exact code recommendations and refactoring suggestions.
 
 Do not generate code until review is complete.
+
+prompt30:
+Create a quantitative research framework.
+
+Goal:
+
+Evaluate strategies scientifically.
+
+Generate:
+
+ResearchTemplate.md
+
+Sections:
+
+Hypothesis
+Market Regime
+Entry Criteria
+Exit Criteria
+Position Sizing
+Expected Outcome
+Backtest Results
+Drawdown Analysis
+Failure Analysis
+Improvement Ideas
+
+The framework should be reusable for:
+
+Bull Put Spread
+Iron Condor
+Covered Call
+Wheel Strategy
