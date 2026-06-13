@@ -121,6 +121,16 @@ src/
 └── jobs/          # Phase 2+ background workers
 ```
 
+## Database
+
+PostgreSQL schema managed by Prisma. See the [ER overview in architecture.md](./architecture.md#database-schema) for entity relationships.
+
+```
+prisma/
+├── schema.prisma   # Models and enums
+└── migrations/     # Versioned schema changes
+```
+
 ## Project Docs
 
 - [vision.md](./vision.md) — Product vision

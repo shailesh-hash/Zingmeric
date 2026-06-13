@@ -59,6 +59,39 @@ Execution
 
 ---
 
+## Database Schema
+
+Entity-relationship overview for the PostgreSQL data model (see `prisma/schema.prisma`).
+
+```mermaid
+erDiagram
+    Instrument ||--o{ Instrument : "underlying"
+    Instrument ||--o{ HistoricalPrice : has
+    Instrument ||--o{ OptionChain : "underlying"
+    Instrument ||--o{ OptionChain : "contract"
+    Instrument ||--o{ Trade : traded
+    Instrument ||--o{ Position : held
+
+    BacktestRun ||--o| Portfolio : "simulated portfolio"
+    BacktestRun ||--o{ Trade : contains
+    BacktestRun ||--o{ Position : contains
+
+    Portfolio ||--o{ Trade : executes
+    Portfolio ||--o{ Position : holds
+```
+
+| Model | Purpose |
+|-------|---------|
+| `Instrument` | Tradable symbols — indices, equities, futures, options |
+| `HistoricalPrice` | OHLCV time-series bars for backtesting replay |
+| `OptionChain` | Point-in-time option chain quotes per strike/side |
+| `Portfolio` | Capital account (live, paper, or backtest) |
+| `BacktestRun` | Strategy simulation run and performance metrics |
+| `Trade` | Individual fills with brokerage, STT, slippage, and fees |
+| `Position` | Open or closed holdings with PnL tracking |
+
+---
+
 ## Modules
 
 ### Market Data

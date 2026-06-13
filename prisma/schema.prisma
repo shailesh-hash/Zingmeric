@@ -7,12 +7,291 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Phase 2 will add Instrument, Candle, OptionChain models.
-// Schema is intentionally minimal for Phase 1 foundation.
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum Exchange {
+  NSE
+  BSE
+  MCX
+}
+
+enum InstrumentType {
+  INDEX
+  EQUITY
+  ETF
+  FUTURE
+  OPTION
+  COMMODITY
+}
+
+enum OptionType {
+  CE
+  PE
+}
+
+enum PriceInterval {
+  MINUTE_1
+  MINUTE_5
+  MINUTE_15
+  HOUR_1
+  DAY_1
+}
+
+enum TradeSide {
+  BUY
+  SELL
+}
+
+enum TradeStatus {
+  PENDING
+  FILLED
+  CANCELLED
+  REJECTED
+}
+
+enum PositionStatus {
+  OPEN
+  CLOSED
+}
+
+enum PortfolioMode {
+  LIVE
+  PAPER
+  BACKTEST
+}
+
+enum BacktestStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+// ---------------------------------------------------------------------------
+// Phase 1 — operational
+// ---------------------------------------------------------------------------
 
 model HealthCheck {
   id        String   @id @default(cuid())
-  checkedAt DateTime @default(now())
+  checkedAt DateTime @default(now()) @db.Timestamptz(3)
 
   @@map("health_checks")
+}
+
+// ---------------------------------------------------------------------------
+// Market data
+// ---------------------------------------------------------------------------
+
+/// Tradable symbol: indices, equities, futures, and option contracts.
+model Instrument {
+  id          String         @id @default(cuid())
+  symbol      String
+  name        String
+  exchange    Exchange
+  type        InstrumentType
+  segment     String         @default("NSE") // e.g. NFO, NSE, BSE
+  exchangeToken Int?         @unique
+  lotSize     Int            @default(1)
+  tickSize    Decimal        @default(0.05) @db.Decimal(10, 4)
+  isActive    Boolean        @default(true)
+
+  // Option / derivative fields (null for non-derivatives)
+  underlyingInstrumentId String?
+  underlyingInstrument   Instrument?  @relation("InstrumentUnderlying", fields: [underlyingInstrumentId], references: [id], onDelete: SetNull)
+  derivativeContracts    Instrument[] @relation("InstrumentUnderlying")
+  strikePrice            Decimal?     @db.Decimal(12, 2)
+  optionType             OptionType?
+  expiryDate             DateTime?    @db.Date
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  historicalPrices     HistoricalPrice[]
+  optionChains           OptionChain[]   @relation("OptionChainUnderlying")
+  optionChainContracts   OptionChain[]   @relation("OptionChainContract")
+  trades                 Trade[]
+  positions              Position[]
+
+  @@unique([exchange, symbol])
+  @@index([type, isActive])
+  @@index([underlyingInstrumentId, expiryDate])
+  @@index([expiryDate, type])
+  @@map("instruments")
+}
+
+/// OHLCV time-series bars for an instrument.
+model HistoricalPrice {
+  id           String        @id @default(cuid())
+  instrumentId String
+  instrument   Instrument    @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
+  interval     PriceInterval
+  timestamp    DateTime      @db.Timestamptz(3)
+  open         Decimal       @db.Decimal(18, 4)
+  high         Decimal       @db.Decimal(18, 4)
+  low          Decimal       @db.Decimal(18, 4)
+  close        Decimal       @db.Decimal(18, 4)
+  volume       BigInt        @default(0)
+  openInterest BigInt?
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([instrumentId, interval, timestamp])
+  @@index([instrumentId, timestamp(sort: Desc)])
+  @@index([timestamp(sort: Desc)])
+  @@map("historical_prices")
+}
+
+/// Point-in-time option chain quote for one strike / side at a snapshot.
+model OptionChain {
+  id                     String     @id @default(cuid())
+  underlyingInstrumentId String
+  underlyingInstrument   Instrument @relation("OptionChainUnderlying", fields: [underlyingInstrumentId], references: [id], onDelete: Cascade)
+  contractInstrumentId   String?
+  contractInstrument     Instrument? @relation("OptionChainContract", fields: [contractInstrumentId], references: [id], onDelete: SetNull)
+  snapshotAt             DateTime   @db.Timestamptz(3)
+  expiryDate             DateTime   @db.Date
+  strikePrice            Decimal    @db.Decimal(12, 2)
+  optionType             OptionType
+  bid                    Decimal?   @db.Decimal(18, 4)
+  ask                    Decimal?   @db.Decimal(18, 4)
+  lastPrice              Decimal?   @db.Decimal(18, 4)
+  volume                 BigInt     @default(0)
+  openInterest           BigInt     @default(0)
+  impliedVolatility      Decimal?   @db.Decimal(8, 4)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([underlyingInstrumentId, snapshotAt, expiryDate, strikePrice, optionType])
+  @@index([underlyingInstrumentId, snapshotAt(sort: Desc)])
+  @@index([underlyingInstrumentId, expiryDate, snapshotAt(sort: Desc)])
+  @@index([snapshotAt(sort: Desc)])
+  @@map("option_chains")
+}
+
+// ---------------------------------------------------------------------------
+// Portfolio & execution
+// ---------------------------------------------------------------------------
+
+/// Capital account for live, paper, or backtest trading.
+model Portfolio {
+  id             String        @id @default(cuid())
+  name           String
+  mode           PortfolioMode @default(PAPER)
+  initialCapital Decimal       @db.Decimal(18, 2)
+  cashBalance    Decimal       @db.Decimal(18, 2)
+  currency       String        @default("INR") @db.Char(3)
+  backtestRunId  String?       @unique
+  backtestRun    BacktestRun?  @relation(fields: [backtestRunId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  trades    Trade[]
+  positions Position[]
+
+  @@index([mode])
+  @@map("portfolios")
+}
+
+/// Simulated or live strategy run over historical data.
+model BacktestRun {
+  id              String         @id @default(cuid())
+  name            String
+  strategyName    String
+  parameters      Json           @default("{}")
+  status          BacktestStatus @default(PENDING)
+  startDate       DateTime       @db.Date
+  endDate         DateTime       @db.Date
+  initialCapital  Decimal        @db.Decimal(18, 2)
+  includeCosts    Boolean        @default(true)
+
+  // Populated when status = COMPLETED
+  cagr            Decimal? @db.Decimal(10, 4)
+  sharpeRatio     Decimal? @db.Decimal(10, 4)
+  maxDrawdown     Decimal? @db.Decimal(10, 4)
+  profitFactor    Decimal? @db.Decimal(10, 4)
+  winRate         Decimal? @db.Decimal(6, 4)
+  totalTrades     Int?
+  finalCapital    Decimal? @db.Decimal(18, 2)
+
+  startedAt   DateTime? @db.Timestamptz(3)
+  completedAt DateTime? @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
+
+  portfolio Portfolio?
+  trades    Trade[]
+  positions Position[]
+
+  @@index([strategyName, status])
+  @@index([status, createdAt(sort: Desc)])
+  @@index([startDate, endDate])
+  @@map("backtest_runs")
+}
+
+/// Executed or simulated order fill.
+model Trade {
+  id           String      @id @default(cuid())
+  portfolioId  String
+  portfolio    Portfolio   @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  instrumentId String
+  instrument   Instrument  @relation(fields: [instrumentId], references: [id], onDelete: Restrict)
+  backtestRunId String?
+  backtestRun  BacktestRun? @relation(fields: [backtestRunId], references: [id], onDelete: SetNull)
+
+  side          TradeSide
+  status        TradeStatus @default(FILLED)
+  quantity      Int
+  price         Decimal     @db.Decimal(18, 4)
+  strategyName  String?
+  legGroupId    String?     // groups multi-leg strategy fills
+
+  // Cost breakdown (rules.md: brokerage, STT, slippage, exchange charges)
+  brokerage       Decimal @default(0) @db.Decimal(12, 2)
+  stt             Decimal @default(0) @db.Decimal(12, 2)
+  exchangeCharges Decimal @default(0) @db.Decimal(12, 2)
+  slippage        Decimal @default(0) @db.Decimal(12, 2)
+  totalFees       Decimal @default(0) @db.Decimal(12, 2)
+
+  executedAt DateTime @db.Timestamptz(3)
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([portfolioId, executedAt(sort: Desc)])
+  @@index([backtestRunId, executedAt(sort: Desc)])
+  @@index([instrumentId, executedAt(sort: Desc)])
+  @@index([legGroupId])
+  @@index([strategyName, executedAt(sort: Desc)])
+  @@map("trades")
+}
+
+/// Open or closed holding in a portfolio.
+model Position {
+  id           String         @id @default(cuid())
+  portfolioId  String
+  portfolio    Portfolio      @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  instrumentId String
+  instrument   Instrument     @relation(fields: [instrumentId], references: [id], onDelete: Restrict)
+  backtestRunId String?
+  backtestRun  BacktestRun?    @relation(fields: [backtestRunId], references: [id], onDelete: SetNull)
+
+  status        PositionStatus @default(OPEN)
+  quantity      Int
+  averagePrice  Decimal        @db.Decimal(18, 4)
+  realizedPnl   Decimal        @default(0) @db.Decimal(18, 2)
+  unrealizedPnl Decimal        @default(0) @db.Decimal(18, 2)
+  legGroupId    String?
+  strategyName  String?
+
+  openedAt DateTime  @db.Timestamptz(3)
+  closedAt DateTime? @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(3)
+
+  @@index([portfolioId, status])
+  @@index([backtestRunId, status])
+  @@index([instrumentId, status])
+  @@index([legGroupId])
+  @@map("positions")
 }
