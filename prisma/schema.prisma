@@ -1,0 +1,18 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Phase 2 will add Instrument, Candle, OptionChain models.
+// Schema is intentionally minimal for Phase 1 foundation.
+
+model HealthCheck {
+  id        String   @id @default(cuid())
+  checkedAt DateTime @default(now())
+
+  @@map("health_checks")
+}
