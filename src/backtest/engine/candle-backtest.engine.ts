@@ -6,15 +6,17 @@ import type { MetricsCalculator } from '../metrics/metrics-calculator.js';
 import type { OrderSimulator } from '../simulation/order-simulator.js';
 import type { PortfolioTracker } from '../portfolio/portfolio-tracker.js';
 import type { CandleReplayer } from '../replay/candle-replayer.js';
+import { createBacktestMetricsPublisher } from '../observability/backtest-metrics.publisher.js';
+import { getTracingService } from '../../observability/instrumentation.js';
 import type { StrategyEngine } from '../../strategies/engine/strategy-engine.js';
 import { createMarketSnapshot } from '../../strategies/types/market-snapshot.type.js';
 
-export interface BacktestRunRequest {
+export interface CandleBacktestRunRequest {
   config: BacktestConfig;
   candles: BacktestCandle[];
 }
 
-export interface BacktestEngineDependencies {
+export interface CandleBacktestEngineDependencies {
   strategyEngine: StrategyEngine;
   candleReplayer: CandleReplayer;
   orderSimulator: OrderSimulator;
@@ -22,17 +24,54 @@ export interface BacktestEngineDependencies {
   createPortfolioTracker: (initialCapital: number) => PortfolioTracker;
 }
 
-export class BacktestEngine {
-  constructor(private readonly dependencies: BacktestEngineDependencies) {}
+/** Legacy equity candle backtest path (non-option strategies). */
+export class CandleBacktestEngine {
+  constructor(private readonly dependencies: CandleBacktestEngineDependencies) {}
 
-  run(request: BacktestRunRequest): BacktestRunResult {
+  run(request: CandleBacktestRunRequest): BacktestRunResult {
     this.validateRequest(request);
 
+    const tracing = getTracingService();
+    const metricsPublisher = createBacktestMetricsPublisher({
+      strategyName: request.config.strategyName,
+      portfolioId: `${request.config.instrumentId}-backtest`,
+      portfolioMode: 'backtest',
+      instrumentId: request.config.instrumentId,
+      symbol: request.config.symbol,
+    });
+
+    metricsPublisher.beginReplay(request.candles.length);
+
+    try {
+      const result = tracing.withSpanSync(
+        'backtest.run',
+        {
+          'strategy.name': request.config.strategyName,
+          'instrument.id': request.config.instrumentId,
+          'backtest.candles': request.candles.length,
+        },
+        () => this.executeRun(request, metricsPublisher),
+      );
+
+      metricsPublisher.finishReplay('success');
+      return result;
+    } catch (error) {
+      metricsPublisher.finishReplay('error');
+      throw error;
+    }
+  }
+
+  private executeRun(
+    request: CandleBacktestRunRequest,
+    metricsPublisher: ReturnType<typeof createBacktestMetricsPublisher>,
+  ): BacktestRunResult {
     const replayedCandles = this.dependencies.candleReplayer.replay(request.candles);
     const portfolioTracker = this.dependencies.createPortfolioTracker(
       request.config.initialCapital,
     );
     const portfolio = portfolioTracker.state;
+
+    metricsPublisher.recordPortfolioEquity(portfolio.cash);
 
     for (const candle of replayedCandles) {
       const snapshot = createMarketSnapshot({
@@ -50,6 +89,7 @@ export class BacktestEngine {
       const signal = this.dependencies.strategyEngine.generateSignal(
         snapshot,
         request.config.strategyName,
+        metricsPublisher,
       );
 
       const trade = this.dependencies.orderSimulator.execute(
@@ -61,9 +101,14 @@ export class BacktestEngine {
 
       if (trade) {
         portfolioTracker.recordTrade(trade);
+        metricsPublisher.recordOrderExecuted({
+          strategyName: request.config.strategyName,
+          side: trade.side.toLowerCase() as 'buy' | 'sell',
+        });
       }
 
       portfolioTracker.markToMarket(candle);
+      metricsPublisher.recordPortfolioEquity(portfolioTracker.getEquity(candle.close));
     }
 
     const startDate = replayedCandles[0]?.timestamp ?? new Date();
@@ -90,7 +135,7 @@ export class BacktestEngine {
     };
   }
 
-  private validateRequest(request: BacktestRunRequest): void {
+  private validateRequest(request: CandleBacktestRunRequest): void {
     if (request.candles.length === 0) {
       throw new InvalidBacktestRequestError('At least one candle is required');
     }
@@ -105,6 +150,8 @@ export class BacktestEngine {
   }
 }
 
-export function createBacktestEngine(dependencies: BacktestEngineDependencies): BacktestEngine {
-  return new BacktestEngine(dependencies);
+export function createCandleBacktestEngine(
+  dependencies: CandleBacktestEngineDependencies,
+): CandleBacktestEngine {
+  return new CandleBacktestEngine(dependencies);
 }

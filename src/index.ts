@@ -1,3 +1,4 @@
+import { shutdownObservability } from './observability/instrumentation.js';
 import { loadConfig } from './config/index.js';
 import { buildServer } from './api/server.js';
 import { connectRedis, disconnectRedis } from './lib/redis.js';
@@ -17,6 +18,7 @@ async function main(): Promise<void> {
     await app.close();
     await disconnectRedis();
     await disconnectPrisma();
+    await shutdownObservability();
     process.exit(0);
   };
 

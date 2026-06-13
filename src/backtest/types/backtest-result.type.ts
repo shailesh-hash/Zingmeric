@@ -3,6 +3,7 @@ import type { EquityPoint, SimulatedTrade } from './portfolio-state.type.js';
 export interface BacktestMetrics {
   cagr: number;
   sharpeRatio: number;
+  sortinoRatio: number;
   profitFactor: number;
   maxDrawdown: number;
   winRate: number;

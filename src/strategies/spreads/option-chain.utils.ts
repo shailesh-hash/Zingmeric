@@ -20,6 +20,55 @@ export function findPutByTargetDelta(
   }, null);
 }
 
+export function findPutInDeltaRange(
+  puts: OptionPutQuote[],
+  minDelta: number,
+  maxDelta: number,
+): OptionPutQuote | null {
+  const inRange = puts.filter((put) => {
+    const delta = Math.abs(put.delta);
+    return delta >= minDelta && delta <= maxDelta;
+  });
+
+  if (inRange.length === 0) {
+    return null;
+  }
+
+  const targetDelta = (minDelta + maxDelta) / 2;
+
+  return inRange.reduce<OptionPutQuote | null>((closest, put) => {
+    if (!closest) {
+      return put;
+    }
+
+    const currentDistance = Math.abs(Math.abs(put.delta) - targetDelta);
+    const closestDistance = Math.abs(Math.abs(closest.delta) - targetDelta);
+
+    return currentDistance < closestDistance ? put : closest;
+  }, null);
+}
+
+export function calculateDefinedRiskQuantity(
+  accountEquity: number,
+  maxLossPerUnit: number,
+  lotSize: number,
+  maxRiskPct: number,
+): number {
+  if (accountEquity <= 0 || maxLossPerUnit <= 0 || lotSize <= 0 || maxRiskPct <= 0) {
+    return 0;
+  }
+
+  const maxRiskAmount = accountEquity * maxRiskPct;
+  const riskPerLot = maxLossPerUnit * lotSize;
+  const lots = Math.floor(maxRiskAmount / riskPerLot);
+
+  if (lots < 1) {
+    return 0;
+  }
+
+  return lots * lotSize;
+}
+
 export function findCallByTargetDelta(
   calls: OptionCallQuote[],
   targetDelta: number,

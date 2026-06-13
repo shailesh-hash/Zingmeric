@@ -27,6 +27,7 @@ export interface MarketSnapshot {
   low?: number;
   close?: number;
   volume?: number;
+  accountEquity?: number;
   optionChain?: OptionChainSnapshot;
 }
 
@@ -43,6 +44,7 @@ export function createMarketSnapshot(
     low: overrides.low,
     close: overrides.close,
     volume: overrides.volume,
+    accountEquity: overrides.accountEquity,
     optionChain: overrides.optionChain,
   };
 }

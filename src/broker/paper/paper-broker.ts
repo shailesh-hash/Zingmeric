@@ -25,13 +25,16 @@ import {
   type BrokerPositionView,
   type CancelOrderResult,
   type PaperBrokerConfig,
+  type PaperMarketQuote,
   type PlaceOrderRequest,
   type PlaceOrderResult,
 } from '../types/broker.types.js';
+import { findFillableLimitOrders } from './limit-order.matcher.js';
 
 export class PaperBroker implements Broker {
   private readonly portfolio: PortfolioEngine;
   private readonly orders = new Map<string, BrokerOrder>();
+  private readonly pendingRequests = new Map<string, PlaceOrderRequest>();
   private readonly fills: BrokerFill[] = [];
   private readonly tradingCosts: TradingCostConfig;
   private readonly includeCosts: boolean;
@@ -39,9 +42,9 @@ export class PaperBroker implements Broker {
   private realizedPnlTotal = 0;
 
   constructor(config: PaperBrokerConfig) {
-    this.portfolio = createPortfolioEngine(
-      createPortfolioEngineConfig({ initialCapital: config.initialCapital }),
-    );
+    this.portfolio =
+      config.portfolioEngine ??
+      createPortfolioEngine(createPortfolioEngineConfig({ initialCapital: config.initialCapital }));
     this.tradingCosts = config.costs ?? DEFAULT_TRADING_COSTS;
     this.includeCosts = config.includeCosts ?? true;
   }
@@ -55,6 +58,7 @@ export class PaperBroker implements Broker {
 
       if (orderType === OrderType.LIMIT) {
         this.orders.set(order.id, order);
+        this.pendingRequests.set(order.id, request);
         return Promise.resolve({ order, fill: null });
       }
 
@@ -84,6 +88,7 @@ export class PaperBroker implements Broker {
       }
 
       order.status = OrderStatus.CANCELLED;
+      this.pendingRequests.delete(orderId);
       return Promise.resolve({ cancelled: true, order });
     } catch (error) {
       return Promise.reject(error instanceof Error ? error : new Error(String(error)));
@@ -120,8 +125,63 @@ export class PaperBroker implements Broker {
     this.portfolio.markToMarket(quotes);
   }
 
+  processMarketQuotes(quotes: PaperMarketQuote[]): BrokerFill[] {
+    const newFills: BrokerFill[] = [];
+
+    for (const quote of quotes) {
+      const pending = [...this.pendingRequests.entries()]
+        .filter(([, request]) => request.instrumentId === quote.instrumentId)
+        .map(([orderId, request]) => ({ orderId, request }));
+
+      const fillable = findFillableLimitOrders(
+        pending.map((entry) => entry.request),
+        quote,
+      );
+
+      for (const request of fillable) {
+        const orderId = pending.find((entry) => entry.request === request)?.orderId;
+        if (!orderId) {
+          continue;
+        }
+
+        const fill = this.fillPendingLimitOrder(orderId, quote.timestamp);
+        if (fill) {
+          newFills.push(fill);
+        }
+      }
+    }
+
+    return newFills;
+  }
+
+  getPendingOrders(): BrokerOrder[] {
+    return [...this.orders.values()].filter((order) => order.status === OrderStatus.PENDING);
+  }
+
   getPortfolioEngine(): PortfolioEngine {
     return this.portfolio;
+  }
+
+  private fillPendingLimitOrder(orderId: string, timestamp?: Date): BrokerFill | null {
+    const order = this.orders.get(orderId);
+    const request = this.pendingRequests.get(orderId);
+
+    if (!order || !request || order.status !== OrderStatus.PENDING) {
+      return null;
+    }
+
+    const fill = this.executeFill(order, {
+      ...request,
+      timestamp: timestamp ?? request.timestamp ?? new Date(),
+    });
+
+    order.status = OrderStatus.FILLED;
+    order.filledAt = fill.timestamp;
+    this.pendingRequests.delete(orderId);
+    this.fills.push(fill);
+    this.realizedPnlTotal += fill.realizedPnl;
+
+    return fill;
   }
 
   private executeFill(order: BrokerOrder, request: PlaceOrderRequest): BrokerFill {

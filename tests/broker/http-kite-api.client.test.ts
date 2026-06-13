@@ -1,10 +1,10 @@
 import { createHttpKiteApiClient, OrderRejectedError } from '../../src/broker/index.js';
 
-type FetchResponse = {
+interface FetchResponse {
   ok: boolean;
   status?: number;
   json: () => Promise<unknown>;
-};
+}
 
 describe('HttpKiteApiClient', () => {
   const originalFetch = global.fetch;
@@ -15,8 +15,10 @@ describe('HttpKiteApiClient', () => {
 
   it('places orders against the kite REST API', async () => {
     const calls: { url: string; init?: RequestInit }[] = [];
-    global.fetch = ((url: string | URL | Request, init?: RequestInit) => {
-      calls.push({ url: String(url), init });
+    global.fetch = ((input: string | URL | Request, init?: RequestInit) => {
+      const url =
+        typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      calls.push({ url, init });
       return Promise.resolve({
         ok: true,
         json: () =>
@@ -56,11 +58,12 @@ describe('HttpKiteApiClient', () => {
 
   it('cancels orders and fetches positions', async () => {
     const calls: { url: string; init?: RequestInit }[] = [];
-    global.fetch = ((url: string | URL | Request, init?: RequestInit) => {
-      calls.push({ url: String(url), init });
-      const path = String(url);
+    global.fetch = ((input: string | URL | Request, init?: RequestInit) => {
+      const url =
+        typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      calls.push({ url, init });
 
-      if (path.endsWith('/portfolio/positions')) {
+      if (url.endsWith('/portfolio/positions')) {
         return Promise.resolve({
           ok: true,
           json: () =>

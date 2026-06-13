@@ -1,3 +1,5 @@
+import { getMetricsService, getTracingService } from '../../observability/instrumentation.js';
+import type { BacktestMetricsPublisher } from '../../backtest/observability/backtest-metrics.publisher.js';
 import {
   InvalidSignalError,
   InvalidStrategyEngineError,
@@ -44,18 +46,80 @@ export class StrategyEngine {
     return [...this.strategyMap.keys()];
   }
 
-  generateSignal(snapshot: MarketSnapshot, strategyName?: string): Signal {
+  generateSignal(
+    snapshot: MarketSnapshot,
+    strategyName?: string,
+    metricsPublisher?: BacktestMetricsPublisher,
+  ): Signal {
     const name = strategyName ?? this.defaultStrategyName;
     const strategy = this.strategyMap.get(name);
 
     if (!strategy) {
+      this.recordStrategyError(
+        { strategyName: name, errorType: 'StrategyNotFoundError' },
+        metricsPublisher,
+      );
       throw new StrategyNotFoundError(name);
     }
 
-    const signal = strategy.evaluate(snapshot);
-    this.validateSignal(signal, snapshot);
+    const tracing = getTracingService();
+    const metrics = metricsPublisher ?? getMetricsService();
 
-    return signal;
+    try {
+      const signal = tracing.withSpanSync(
+        'strategy.evaluate',
+        {
+          'strategy.name': name,
+          'instrument.id': snapshot.instrumentId,
+        },
+        () => strategy.evaluate(snapshot),
+      );
+
+      this.validateSignal(signal, snapshot);
+      this.recordStrategySignal(
+        { strategyName: name, signalAction: signal.action },
+        metricsPublisher,
+        metrics,
+      );
+
+      return signal;
+    } catch (error: unknown) {
+      this.recordStrategyError(
+        {
+          strategyName: name,
+          errorType: error instanceof Error ? error.name : 'UnknownError',
+        },
+        metricsPublisher,
+        metrics,
+      );
+      throw error;
+    }
+  }
+
+  private recordStrategySignal(
+    attributes: { strategyName: string; signalAction: string },
+    metricsPublisher: BacktestMetricsPublisher | undefined,
+    metrics: BacktestMetricsPublisher | ReturnType<typeof getMetricsService>,
+  ): void {
+    if (metricsPublisher) {
+      metricsPublisher.recordStrategySignal(attributes);
+      return;
+    }
+
+    metrics.recordStrategySignal(attributes);
+  }
+
+  private recordStrategyError(
+    attributes: { strategyName: string; errorType: string },
+    metricsPublisher: BacktestMetricsPublisher | undefined,
+    metrics: BacktestMetricsPublisher | ReturnType<typeof getMetricsService> = getMetricsService(),
+  ): void {
+    if (metricsPublisher) {
+      metricsPublisher.recordStrategyError(attributes);
+      return;
+    }
+
+    metrics.recordStrategyError(attributes);
   }
 
   generateSignals(snapshot: MarketSnapshot): Signal[] {

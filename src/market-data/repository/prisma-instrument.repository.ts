@@ -12,4 +12,13 @@ export class PrismaInstrumentRepository implements InstrumentRepository {
 
     return instrument;
   }
+
+  async findBySymbol(symbol: string): Promise<InstrumentSummary | null> {
+    const instrument = await this.prisma.instrument.findFirst({
+      where: { symbol, isActive: true },
+      select: { id: true, symbol: true },
+    });
+
+    return instrument;
+  }
 }

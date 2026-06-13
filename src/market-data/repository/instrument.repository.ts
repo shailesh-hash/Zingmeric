@@ -5,4 +5,5 @@ export interface InstrumentSummary {
 
 export interface InstrumentRepository {
   findById(id: string): Promise<InstrumentSummary | null>;
+  findBySymbol(symbol: string): Promise<InstrumentSummary | null>;
 }

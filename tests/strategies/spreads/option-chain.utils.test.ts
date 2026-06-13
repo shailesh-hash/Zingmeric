@@ -5,6 +5,7 @@ import type {
 import {
   calculateCallSpreadCloseCost,
   calculateCallSpreadCredit,
+  calculateDefinedRiskQuantity,
   calculateIronCondorCloseCost,
   calculateIronCondorCredit,
   calculateIronCondorMaxLoss,
@@ -14,6 +15,7 @@ import {
   calculateSpreadCredit,
   findCallByTargetDelta,
   findPutByTargetDelta,
+  findPutInDeltaRange,
 } from '../../../src/strategies/spreads/option-chain.utils.js';
 
 const puts: OptionPutQuote[] = [
@@ -34,6 +36,18 @@ describe('option-chain utils', () => {
   it('finds puts closest to target delta', () => {
     expect(findPutByTargetDelta(puts, 0.15)?.strike).toBe(21_850);
     expect(findPutByTargetDelta(puts, 0.05)?.strike).toBe(21_500);
+  });
+
+  it('finds puts within a delta range closest to range midpoint', () => {
+    expect(findPutInDeltaRange(puts, 0.15, 0.2)?.strike).toBe(21_850);
+    expect(findPutInDeltaRange(puts, 0.05, 0.1)?.strike).toBe(21_700);
+    expect(findPutInDeltaRange(puts, 0.25, 0.3)).toBeNull();
+  });
+
+  it('sizes defined-risk quantity to 1% account risk in whole lots', () => {
+    expect(calculateDefinedRiskQuantity(100_000, 295, 50, 0.01)).toBe(0);
+    expect(calculateDefinedRiskQuantity(2_000_000, 295, 50, 0.01)).toBe(50);
+    expect(calculateDefinedRiskQuantity(100_000, 295, 1, 0.01)).toBe(3);
   });
 
   it('finds calls closest to target delta', () => {

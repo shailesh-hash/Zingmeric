@@ -6,6 +6,7 @@ import {
   OrderStatus,
   OrderType,
 } from '../../src/broker/index.js';
+import { createPortfolioEngine, createPortfolioEngineConfig } from '../../src/portfolio/index.js';
 
 describe('PaperBroker', () => {
   it('implements Broker interface with market order fills', async () => {
@@ -111,5 +112,59 @@ describe('PaperBroker', () => {
     ).rejects.toThrow(InvalidOrderRequestError);
 
     await expect(broker.cancelOrder('missing')).rejects.toThrow(OrderNotFoundError);
+  });
+
+  it('fills limit orders when market quotes cross the limit price', async () => {
+    const broker = createPaperBroker({ initialCapital: 10_000, includeCosts: false });
+
+    const placed = await broker.placeOrder({
+      instrumentId: 'inst-nifty',
+      strategyName: 'equity',
+      side: OrderSide.BUY,
+      quantity: 10,
+      price: 100,
+      orderType: OrderType.LIMIT,
+    });
+
+    expect(placed.order.status).toBe(OrderStatus.PENDING);
+    expect(broker.getPendingOrders()).toHaveLength(1);
+
+    const fills = broker.processMarketQuotes([
+      { instrumentId: 'inst-nifty', price: 101, timestamp: new Date('2024-01-15T10:00:00.000Z') },
+    ]);
+    expect(fills).toHaveLength(0);
+    expect(broker.getPendingOrders()).toHaveLength(1);
+
+    const filled = broker.processMarketQuotes([
+      { instrumentId: 'inst-nifty', price: 99, timestamp: new Date('2024-01-15T11:00:00.000Z') },
+    ]);
+
+    expect(filled).toHaveLength(1);
+    expect(filled[0]?.price).toBe(100);
+    expect(placed.order.status).toBe(OrderStatus.FILLED);
+    expect(broker.getPendingOrders()).toHaveLength(0);
+
+    const positions = await broker.getPositions();
+    expect(positions).toHaveLength(1);
+    expect(positions[0]?.quantity).toBe(10);
+  });
+
+  it('uses an injected PortfolioEngine instance', async () => {
+    const portfolio = createPortfolioEngine(
+      createPortfolioEngineConfig({ initialCapital: 50_000 }),
+    );
+    const broker = createPaperBroker({ initialCapital: 50_000, portfolioEngine: portfolio });
+
+    await broker.placeOrder({
+      instrumentId: 'inst-nifty',
+      strategyName: 'equity',
+      side: OrderSide.BUY,
+      quantity: 5,
+      price: 200,
+    });
+
+    expect(broker.getPortfolioEngine()).toBe(portfolio);
+    expect(portfolio.snapshot.cash).toBeLessThan(50_000);
+    expect(await broker.getPositions()).toHaveLength(1);
   });
 });

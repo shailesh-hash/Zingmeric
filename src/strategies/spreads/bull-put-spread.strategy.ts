@@ -1,6 +1,7 @@
 import type { Strategy } from '../strategy.interface.js';
 import type { MarketSnapshot, OptionPutQuote } from '../types/market-snapshot.type.js';
 import { createSignal, SignalAction, type Signal } from '../types/signal.type.js';
+import type { OpenDefinedRiskExecution } from '../types/signal-execution.type.js';
 import {
   DEFAULT_BULL_PUT_SPREAD_CONFIG,
   type BullPutSpreadConfig,
@@ -75,6 +76,7 @@ export class BullPutSpreadStrategy implements Strategy {
       timestamp: snapshot.timestamp,
       instrumentId: snapshot.instrumentId,
       reason: `Open bull put spread: sell ${String(shortPut.strike)}P / buy ${String(longPut.strike)}P for credit ${credit.toFixed(2)}`,
+      execution: this.createOpenExecution(credit, shortPut.strike, longPut.strike),
     });
   }
 
@@ -100,11 +102,11 @@ export class BullPutSpreadStrategy implements Strategy {
     const stopLossDebit = position.entryCredit * this.config.stopLossMultiple;
 
     if (closeCost <= profitTargetDebit) {
-      return this.close(snapshot, `Profit target hit at debit ${closeCost.toFixed(2)}`);
+      return this.close(snapshot, `Profit target hit at debit ${closeCost.toFixed(2)}`, closeCost);
     }
 
     if (closeCost >= stopLossDebit) {
-      return this.close(snapshot, `Stop loss hit at debit ${closeCost.toFixed(2)}`);
+      return this.close(snapshot, `Stop loss hit at debit ${closeCost.toFixed(2)}`, closeCost);
     }
 
     return this.hold(
@@ -113,7 +115,7 @@ export class BullPutSpreadStrategy implements Strategy {
     );
   }
 
-  private close(snapshot: MarketSnapshot, reason: string): Signal {
+  private close(snapshot: MarketSnapshot, reason: string, closeCost?: number): Signal {
     this.position = null;
 
     return createSignal({
@@ -122,6 +124,13 @@ export class BullPutSpreadStrategy implements Strategy {
       timestamp: snapshot.timestamp,
       instrumentId: snapshot.instrumentId,
       reason,
+      execution:
+        closeCost !== undefined
+          ? {
+              kind: 'CLOSE_DEFINED_RISK',
+              closeCost,
+            }
+          : undefined,
     });
   }
 
@@ -133,5 +142,24 @@ export class BullPutSpreadStrategy implements Strategy {
       instrumentId: snapshot.instrumentId,
       reason,
     });
+  }
+
+  private createOpenExecution(
+    entryCredit: number,
+    shortStrike: number,
+    longStrike: number,
+  ): OpenDefinedRiskExecution {
+    const width = shortStrike - longStrike;
+
+    return {
+      kind: 'OPEN_DEFINED_RISK',
+      entryCredit,
+      maxLoss: Math.max(width - entryCredit, 0),
+      markMetadata: {
+        spreadKind: 'BULL_PUT',
+        shortStrike,
+        longStrike,
+      },
+    };
   }
 }

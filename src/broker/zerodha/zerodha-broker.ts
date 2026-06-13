@@ -1,5 +1,6 @@
-import type { Broker } from '../broker.interface.js';
 import { InvalidOrderRequestError, OrderNotFoundError } from '../errors/broker.errors.js';
+import { LiveBrokerAdapter } from '../live/live-broker.adapter.js';
+import type { LiveBrokerAdapterConfig } from '../live/live-broker.adapter.js';
 import {
   OrderStatus,
   OrderType,
@@ -27,26 +28,29 @@ interface TrackedPositionMeta {
   strategyName: string;
 }
 
-export class ZerodhaBroker implements Broker {
+export interface ZerodhaBrokerAdapterConfig extends LiveBrokerAdapterConfig {
+  client: KiteApiClient;
+  instrumentResolver: ZerodhaInstrumentResolver;
+  brokerConfig?: ZerodhaBrokerConfig;
+}
+
+export class ZerodhaBroker extends LiveBrokerAdapter {
   private readonly orders = new Map<string, BrokerOrder>();
   private readonly fills: BrokerFill[] = [];
   private readonly positionMeta = new Map<string, TrackedPositionMeta>();
   private readonly defaultProduct: 'CNC' | 'MIS' | 'NRML';
   private readonly orderVariety: string;
 
-  constructor(
-    private readonly kiteClient: KiteApiClient,
-    private readonly instrumentResolver: ZerodhaInstrumentResolver,
-    config: ZerodhaBrokerConfig = {},
-  ) {
-    this.defaultProduct = config.defaultProduct ?? 'NRML';
-    this.orderVariety = config.orderVariety ?? 'regular';
+  constructor(private readonly deps: ZerodhaBrokerAdapterConfig) {
+    super({ ...deps, provider: 'zerodha' });
+    this.defaultProduct = deps.brokerConfig?.defaultProduct ?? 'NRML';
+    this.orderVariety = deps.brokerConfig?.orderVariety ?? 'regular';
   }
 
-  async placeOrder(request: PlaceOrderRequest): Promise<PlaceOrderResult> {
+  protected async placeOrderInternal(request: PlaceOrderRequest): Promise<PlaceOrderResult> {
     this.validatePlaceOrderRequest(request);
 
-    const instrument = this.instrumentResolver.resolve(request.instrumentId);
+    const instrument = this.deps.instrumentResolver.resolve(request.instrumentId);
     const orderType = request.orderType ?? OrderType.MARKET;
     const kiteRequest = buildKitePlaceOrderRequest({
       request,
@@ -55,7 +59,7 @@ export class ZerodhaBroker implements Broker {
       defaultProduct: this.defaultProduct,
     });
 
-    const response = await this.kiteClient.placeOrder(kiteRequest);
+    const response = await this.deps.client.placeOrder(kiteRequest);
     const order = toBrokerOrder({
       kiteOrderId: response.orderId,
       request,
@@ -68,14 +72,14 @@ export class ZerodhaBroker implements Broker {
     return { order, fill: createPendingFill(order) };
   }
 
-  async cancelOrder(orderId: string): Promise<CancelOrderResult> {
+  protected async cancelOrderInternal(orderId: string): Promise<CancelOrderResult> {
     const order = this.orders.get(orderId);
 
     if (!order) {
       throw new OrderNotFoundError(`Order not found: ${orderId}`);
     }
 
-    await this.kiteClient.cancelOrder({
+    await this.deps.client.cancelOrder({
       variety: this.orderVariety,
       orderId,
     });
@@ -85,8 +89,8 @@ export class ZerodhaBroker implements Broker {
     return { cancelled: true, order };
   }
 
-  async getPositions(): Promise<BrokerPositionView[]> {
-    const response = await this.kiteClient.getPositions();
+  protected async getPositionsInternal(): Promise<BrokerPositionView[]> {
+    const response = await this.deps.client.getPositions();
 
     return response.net
       .filter((position) => position.quantity !== 0)
@@ -169,10 +173,6 @@ export class ZerodhaBroker implements Broker {
   }
 }
 
-export function createZerodhaBroker(
-  kiteClient: KiteApiClient,
-  instrumentResolver: ZerodhaInstrumentResolver,
-  config?: ZerodhaBrokerConfig,
-): ZerodhaBroker {
-  return new ZerodhaBroker(kiteClient, instrumentResolver, config);
+export function createZerodhaBroker(deps: ZerodhaBrokerAdapterConfig): ZerodhaBroker {
+  return new ZerodhaBroker(deps);
 }

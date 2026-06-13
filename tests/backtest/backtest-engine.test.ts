@@ -1,5 +1,5 @@
 import {
-  BacktestEngine,
+  CandleBacktestEngine,
   CandleReplayer,
   createBacktestConfig,
   DefaultMetricsCalculator,
@@ -47,13 +47,13 @@ function candle(timestamp: string, close: number): BacktestCandle {
   };
 }
 
-describe('BacktestEngine', () => {
+describe('CandleBacktestEngine', () => {
   const strategyEngine = createStrategyEngine({
     strategies: [new AlternatingStrategy()],
     defaultStrategyName: 'alternating',
   });
 
-  const engine = new BacktestEngine({
+  const engine = new CandleBacktestEngine({
     strategyEngine,
     candleReplayer: new CandleReplayer(),
     orderSimulator: new DefaultOrderSimulator(),

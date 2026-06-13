@@ -6,7 +6,7 @@ import type {
   CancelOrderResult,
   PlaceOrderRequest,
   PlaceOrderResult,
-} from '../types/broker.types.js';
+} from './types/broker.types.js';
 
 export interface Broker {
   placeOrder(request: PlaceOrderRequest): Promise<PlaceOrderResult>;

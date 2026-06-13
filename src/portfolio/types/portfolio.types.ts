@@ -1,3 +1,5 @@
+import type { PortfolioMetricsPublisher } from '../../observability/types/observability.types.js';
+
 export enum PositionKind {
   EQUITY = 'EQUITY',
   DEFINED_RISK = 'DEFINED_RISK',
@@ -67,6 +69,7 @@ export interface PortfolioSnapshot {
 export interface PortfolioEngineConfig {
   initialCapital: number;
   currency?: string;
+  metricsPublisher?: PortfolioMetricsPublisher;
 }
 
 export interface OpenEquityPositionRequest {

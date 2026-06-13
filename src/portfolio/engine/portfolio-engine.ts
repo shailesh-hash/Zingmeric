@@ -4,6 +4,7 @@ import {
   InvalidPortfolioOperationError,
   PositionNotFoundError,
 } from '../errors/portfolio.errors.js';
+import { getMetricsService } from '../../observability/instrumentation.js';
 import {
   calculateDefinedRiskMargin,
   calculatePositionUnrealizedPnl,
@@ -63,6 +64,10 @@ export class PortfolioEngine {
 
   get ledgerEntries(): PortfolioLedgerEntry[] {
     return [...this.ledger];
+  }
+
+  getClosedPositions(): PortfolioPosition[] {
+    return [...this.closedPositions];
   }
 
   getOpenPositions(strategyName?: string): PortfolioPosition[] {
@@ -150,6 +155,7 @@ export class PortfolioEngine {
 
     this.cash -= totalCost;
     this.openPositions.set(positionId, position);
+    this.emitPositionOpened(request.strategyName, 'equity');
     this.recordLedgerEntry({
       timestamp: request.timestamp,
       strategyName: request.strategyName,
@@ -210,6 +216,8 @@ export class PortfolioEngine {
       price: request.price,
     });
 
+    this.emitPortfolioEquity();
+
     return { position: updatedPosition, realizedPnl };
   }
 
@@ -256,6 +264,7 @@ export class PortfolioEngine {
 
     this.cash += creditReceived;
     this.openPositions.set(positionId, position);
+    this.emitPositionOpened(request.strategyName, 'defined_risk');
     this.recordLedgerEntry({
       timestamp: request.timestamp,
       strategyName: request.strategyName,
@@ -307,6 +316,8 @@ export class PortfolioEngine {
       price: request.closeCost,
     });
 
+    this.emitPortfolioEquity();
+
     return { position: null, realizedPnl };
   }
 
@@ -323,6 +334,25 @@ export class PortfolioEngine {
         markPrice: quote.markPrice,
       });
     }
+
+    this.emitPortfolioEquity();
+  }
+
+  private emitPositionOpened(strategyName: string, positionType: 'equity' | 'defined_risk'): void {
+    const publisher = this.config.metricsPublisher;
+
+    if (publisher) {
+      publisher.recordPositionOpened({ strategyName, positionType });
+      this.emitPortfolioEquity();
+      return;
+    }
+
+    getMetricsService().recordPositionOpened({ strategyName, positionType });
+    this.emitPortfolioEquity();
+  }
+
+  private emitPortfolioEquity(): void {
+    this.config.metricsPublisher?.recordPortfolioEquity(this.snapshot.equity);
   }
 
   private requireOpenEquityPosition(positionId: string): EquityPosition {

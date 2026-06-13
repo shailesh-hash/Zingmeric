@@ -1,4 +1,4 @@
-import { createPaperBroker, OrderSide, OrderStatus } from '../../src/broker/index.js';
+import { createPaperBroker, OrderSide, OrderStatus, OrderType } from '../../src/broker/index.js';
 import { createPositionId as portfolioPositionId } from '../../src/portfolio/index.js';
 
 describe('PaperBroker integration', () => {
@@ -97,6 +97,40 @@ describe('PaperBroker integration', () => {
     expect(pnl.cash).toBe(101_500);
     expect(await broker.getPositions()).toHaveLength(0);
     expect(broker.getOrders()).toHaveLength(2);
+  });
+
+  it('fills sell limit orders when market rises to the limit', async () => {
+    const broker = createPaperBroker({ initialCapital: 100_000, includeCosts: false });
+
+    await broker.placeOrder({
+      instrumentId: 'inst-nifty',
+      strategyName: 'equity',
+      side: OrderSide.BUY,
+      quantity: 50,
+      price: 100,
+      timestamp,
+    });
+
+    const sellLimit = await broker.placeOrder({
+      instrumentId: 'inst-nifty',
+      strategyName: 'equity',
+      side: OrderSide.SELL,
+      quantity: 50,
+      price: 110,
+      orderType: OrderType.LIMIT,
+      timestamp,
+    });
+
+    expect(sellLimit.order.status).toBe(OrderStatus.PENDING);
+
+    const fills = broker.processMarketQuotes([
+      { instrumentId: 'inst-nifty', price: 110, timestamp: new Date('2024-01-16T09:15:00.000Z') },
+    ]);
+
+    expect(fills).toHaveLength(1);
+    expect(fills[0]?.realizedPnl).toBe(500);
+    expect(broker.getPnlSummary().realizedPnl).toBe(500);
+    expect(await broker.getPositions()).toHaveLength(0);
   });
 
   it('tracks multiple strategies independently', async () => {

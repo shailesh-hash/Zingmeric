@@ -1,5 +1,14 @@
 export { BullPutSpreadStrategy } from './bull-put-spread.strategy.js';
 export {
+  BullPutSpreadStrategyV1,
+  createBullPutSpreadStrategyV1,
+} from './bull-put-spread-v1.strategy.js';
+export {
+  DEFAULT_BULL_PUT_SPREAD_V1_CONFIG,
+  type BullPutSpreadV1Config,
+  type BullPutSpreadV1Position,
+} from './bull-put-spread-v1.types.js';
+export {
   DEFAULT_BULL_PUT_SPREAD_CONFIG,
   type BullPutSpreadConfig,
   type BullPutSpreadPosition,
@@ -12,7 +21,9 @@ export {
 } from './iron-condor.types.js';
 export {
   findPutByTargetDelta,
+  findPutInDeltaRange,
   findCallByTargetDelta,
+  calculateDefinedRiskQuantity,
   calculateSpreadCloseCost,
   calculateSpreadCredit,
   calculatePutSpreadCredit,

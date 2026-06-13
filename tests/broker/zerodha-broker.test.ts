@@ -56,7 +56,7 @@ describe('ZerodhaBroker', () => {
 
   it('places orders through the kite client without strategy engine coupling', async () => {
     const kiteClient = new MockKiteApiClient();
-    const broker = createZerodhaBroker(kiteClient, instrumentResolver);
+    const broker = createZerodhaBroker({ client: kiteClient, instrumentResolver });
 
     const result = await broker.placeOrder({
       instrumentId: 'inst-nifty-fut',
@@ -86,7 +86,7 @@ describe('ZerodhaBroker', () => {
 
   it('cancels orders through the kite client', async () => {
     const kiteClient = new MockKiteApiClient();
-    const broker = createZerodhaBroker(kiteClient, instrumentResolver);
+    const broker = createZerodhaBroker({ client: kiteClient, instrumentResolver });
 
     const placed = await broker.placeOrder({
       instrumentId: 'inst-nifty-fut',
@@ -107,7 +107,7 @@ describe('ZerodhaBroker', () => {
 
   it('maps kite positions to broker position views with tracked strategy metadata', async () => {
     const kiteClient = new MockKiteApiClient();
-    const broker = createZerodhaBroker(kiteClient, instrumentResolver);
+    const broker = createZerodhaBroker({ client: kiteClient, instrumentResolver });
 
     await broker.placeOrder({
       instrumentId: 'inst-nifty-fut',
@@ -152,7 +152,7 @@ describe('ZerodhaBroker', () => {
 
   it('rejects defined-risk orders and unknown instruments', async () => {
     const kiteClient = new MockKiteApiClient();
-    const broker = createZerodhaBroker(kiteClient, instrumentResolver);
+    const broker = createZerodhaBroker({ client: kiteClient, instrumentResolver });
 
     await expect(
       broker.placeOrder({
@@ -181,7 +181,7 @@ describe('ZerodhaBroker', () => {
   it('surfaces kite api failures as order rejected errors', async () => {
     const kiteClient = new MockKiteApiClient();
     kiteClient.placeOrderError = new OrderRejectedError('Insufficient funds');
-    const broker = createZerodhaBroker(kiteClient, instrumentResolver);
+    const broker = createZerodhaBroker({ client: kiteClient, instrumentResolver });
 
     await expect(
       broker.placeOrder({
@@ -196,7 +196,7 @@ describe('ZerodhaBroker', () => {
   });
 
   it('throws when cancelling unknown orders', async () => {
-    const broker = createZerodhaBroker(new MockKiteApiClient(), instrumentResolver);
+    const broker = createZerodhaBroker({ client: new MockKiteApiClient(), instrumentResolver });
 
     await expect(broker.cancelOrder('missing')).rejects.toThrow(OrderNotFoundError);
   });

@@ -1,4 +1,5 @@
 import type { TradingCostConfig } from '../../backtest/types/backtest-config.type.js';
+import type { PortfolioEngine } from '../../portfolio/engine/portfolio-engine.js';
 
 export enum OrderSide {
   BUY = 'BUY',
@@ -101,4 +102,11 @@ export interface PaperBrokerConfig {
   initialCapital: number;
   includeCosts?: boolean;
   costs?: TradingCostConfig;
+  portfolioEngine?: PortfolioEngine;
+}
+
+export interface PaperMarketQuote {
+  instrumentId: string;
+  price: number;
+  timestamp?: Date;
 }

@@ -160,12 +160,14 @@ model OptionChain {
   volume                 BigInt     @default(0)
   openInterest           BigInt     @default(0)
   impliedVolatility      Decimal?   @db.Decimal(8, 4)
+  delta                  Decimal?   @db.Decimal(8, 6)
 
   createdAt DateTime @default(now()) @db.Timestamptz(3)
 
   @@unique([underlyingInstrumentId, snapshotAt, expiryDate, strikePrice, optionType])
   @@index([underlyingInstrumentId, snapshotAt(sort: Desc)])
   @@index([underlyingInstrumentId, expiryDate, snapshotAt(sort: Desc)])
+  @@index([underlyingInstrumentId, snapshotAt, optionType, delta])
   @@index([snapshotAt(sort: Desc)])
   @@map("option_chains")
 }
@@ -190,6 +192,7 @@ model Portfolio {
 
   trades    Trade[]
   positions Position[]
+  equitySnapshots EquitySnapshot[]
 
   @@index([mode])
   @@map("portfolios")
@@ -224,6 +227,7 @@ model BacktestRun {
   portfolio Portfolio?
   trades    Trade[]
   positions Position[]
+  equitySnapshots EquitySnapshot[]
 
   @@index([strategyName, status])
   @@index([status, createdAt(sort: Desc)])
@@ -294,4 +298,27 @@ model Position {
   @@index([instrumentId, status])
   @@index([legGroupId])
   @@map("positions")
+}
+
+/// Point-in-time portfolio valuation for equity curve, drawdown, and risk metrics.
+model EquitySnapshot {
+  id             String   @id @default(cuid())
+  portfolioId    String
+  portfolio      Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  backtestRunId  String?
+  backtestRun    BacktestRun? @relation(fields: [backtestRunId], references: [id], onDelete: SetNull)
+  timestamp      DateTime @db.Timestamptz(3)
+
+  cashBalance    Decimal  @db.Decimal(18, 2)
+  portfolioValue Decimal  @db.Decimal(18, 2)
+  realizedPnl    Decimal  @default(0) @db.Decimal(18, 2)
+  unrealizedPnl  Decimal  @default(0) @db.Decimal(18, 2)
+  drawdown       Decimal  @default(0) @db.Decimal(10, 4)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([portfolioId, timestamp])
+  @@index([portfolioId, timestamp(sort: Asc)])
+  @@index([backtestRunId, timestamp(sort: Asc)])
+  @@map("equity_snapshots")
 }
