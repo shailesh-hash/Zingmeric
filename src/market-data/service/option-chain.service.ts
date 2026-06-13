@@ -1,4 +1,3 @@
-import type { OptionType } from '@prisma/client';
 import { isSupportedOptionUnderlying } from '../constants/underlying-symbols.js';
 import type {
   BulkOptionChainImportRequestDto,
@@ -20,6 +19,7 @@ import {
 } from '../errors/market-data.errors.js';
 import type { InstrumentRepository } from '../repository/instrument.repository.js';
 import type {
+  OptionChainDbRow,
   OptionChainRecord,
   OptionChainRepository,
   OptionChainRowIdentity,
@@ -259,25 +259,7 @@ export class OptionChainService {
     };
   }
 
-  private toQuoteDto(
-    row: {
-      id: string;
-      underlyingInstrumentId: string;
-      contractInstrumentId: string | null;
-      snapshotAt: Date;
-      expiryDate: Date;
-      strikePrice: number;
-      optionType: OptionType;
-      bid: number | null;
-      ask: number | null;
-      lastPrice: number | null;
-      volume: bigint;
-      openInterest: bigint;
-      impliedVolatility: number | null;
-      delta: number | null;
-    },
-    underlyingSymbol: string,
-  ): OptionChainQuoteDto {
+  private toQuoteDto(row: OptionChainDbRow, underlyingSymbol: string): OptionChainQuoteDto {
     return {
       id: row.id,
       underlyingInstrumentId: row.underlyingInstrumentId,
@@ -286,14 +268,14 @@ export class OptionChainService {
       expiryDate: row.expiryDate,
       strikePrice: row.strikePrice,
       optionType: row.optionType,
-      bid: row.bid,
-      ask: row.ask,
-      lastPrice: row.lastPrice,
+      bid: row.bid ?? null,
+      ask: row.ask ?? null,
+      lastPrice: row.lastPrice ?? null,
       volume: row.volume,
       openInterest: row.openInterest,
-      impliedVolatility: row.impliedVolatility,
-      delta: row.delta,
-      contractInstrumentId: row.contractInstrumentId,
+      impliedVolatility: row.impliedVolatility ?? null,
+      delta: row.delta ?? null,
+      contractInstrumentId: row.contractInstrumentId ?? null,
     };
   }
 }

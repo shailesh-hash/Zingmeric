@@ -37,9 +37,9 @@ export {
 export {
   runBullPutSpreadBacktest,
   type BullPutSpreadBacktestCandle,
-  type BullPutSpreadBacktestConfig,
   type BullPutSpreadBacktestResult,
 } from './bull-put-spread-backtest.runner.js';
+export type { BullPutSpreadBacktestConfig } from '../../backtest/pipeline/bull-put-spread-backtest.pipeline.js';
 export {
   runIronCondorBacktest,
   type IronCondorBacktestCandle,

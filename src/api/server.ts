@@ -25,7 +25,7 @@ export async function buildServer(config: AppConfig, options: BuildServerOptions
   registerPrometheusMetricsMiddleware(app);
 
   if (isObservabilityEnabled()) {
-    await app.register(FastifyOtelInstrumentation);
+    await app.register(new FastifyOtelInstrumentation().plugin());
   }
 
   await app.register(cors, { origin: true });

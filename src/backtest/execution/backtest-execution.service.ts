@@ -212,7 +212,7 @@ export class BacktestExecutionService {
 
   private closeEquity(
     step: Extract<SignalExecution, { kind: 'CLOSE_EQUITY' }>,
-    signal: Signal,
+    _signal: Signal,
     snapshot: MarketSnapshot,
   ): void {
     const position = this.portfolioEngine.getPosition(step.positionId);

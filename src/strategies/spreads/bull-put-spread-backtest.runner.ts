@@ -52,6 +52,7 @@ export function runBullPutSpreadBacktest(
   const pipelineConfig: BullPutSpreadBacktestConfig = {
     instrumentId: config.instrumentId,
     symbol: config.symbol,
+    strategyName: strategy.name,
     initialCapital: config.initialCapital,
     lotSize: config.lotSize,
     riskFreeRate: config.riskFreeRate,
