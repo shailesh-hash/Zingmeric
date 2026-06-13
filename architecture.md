@@ -141,6 +141,52 @@ Outputs:
 - Drawdown
 - Sharpe Ratio
 
+```mermaid
+flowchart TB
+    subgraph Input
+        Candles[Historical Candles]
+        Config[Backtest Config]
+        Strategy[Strategy via StrategyEngine]
+    end
+
+    subgraph BacktestEngine
+        Replayer[Candle Replayer]
+        Snapshot[Market Snapshot]
+        Signals[Signal Generation]
+        Simulator[Order Simulator]
+        Portfolio[Portfolio Tracker]
+        Metrics[Metrics Calculator]
+    end
+
+    subgraph Output
+        CAGR[CAGR]
+        Sharpe[Sharpe Ratio]
+        PF[Profit Factor]
+        DD[Max Drawdown]
+        Trades[Simulated Trades]
+        Equity[Equity Curve]
+    end
+
+    Candles --> Replayer
+    Replayer --> Snapshot
+    Snapshot --> Strategy
+    Strategy --> Signals
+    Signals --> Simulator
+    Config --> Simulator
+    Simulator --> Portfolio
+    Replayer --> Portfolio
+    Portfolio --> Metrics
+    Config --> Metrics
+    Metrics --> CAGR
+    Metrics --> Sharpe
+    Metrics --> PF
+    Metrics --> DD
+    Portfolio --> Trades
+    Portfolio --> Equity
+```
+
+Implementation: `src/backtest/` — `BacktestEngine` orchestrates replay, signal generation, order simulation, and portfolio tracking via dependency injection.
+
 ---
 
 ### Portfolio Engine

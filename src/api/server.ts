@@ -1,6 +1,7 @@
 import cors from '@fastify/cors';
 import Fastify from 'fastify';
 import type { AppConfig } from '../config/index.js';
+import { registerAnalyticsRoutes } from './routes/analytics.js';
 import { registerHealthRoutes } from './routes/health.js';
 
 export async function buildServer(config: AppConfig) {
@@ -12,6 +13,7 @@ export async function buildServer(config: AppConfig) {
 
   await app.register(cors, { origin: true });
   registerHealthRoutes(app);
+  registerAnalyticsRoutes(app);
 
   app.get('/', () => ({
     name: 'AlgoTrader',
